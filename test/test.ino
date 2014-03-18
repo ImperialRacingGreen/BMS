@@ -1,157 +1,121 @@
 #include "variant.h"
 #include <due_can.h>
-#include "BmsRegisters.h"
 
-#define CAN_BAUD_RATE CAN_BPS_250K
+#define CAN_BAUD_RATE CAN_BPS_500K
 
-#define CUSTOM_1 0
-#define CUSTOM_2 1
-
-#define STD_VOLT			0x623
-#define STD_CURRENT			0x624
-#define STD_TEMP			0x627
-
-#define STD_CHARGE			0
-#define	STD_ENERGYFLOW		0
-#define STD_RESISTANCE		0
+CAN_FRAME frame1,incoming;
 
 void setup()
 {
-	Serial.begin(115200);
+  Serial.begin(115200);
 
-	if (CAN.init(CAN_BAUD_RATE)) {
-	}
-	else {
-	Serial.println("CAN initialization (sync) ERROR");
-	}
+  if (CAN.init(CAN_BAUD_RATE) &&
+    CAN2.init(CAN_BAUD_RATE)) {
+  }
+  else {
+  Serial.println("CAN initialization (sync) ERROR");
+  }
+
+  //sets the receiving filter to only receive from 0x622 to 0x630
+
+  int filter;
+  //extended
+  for (filter = 0; filter < 3; filter++) {
+  CAN.setRXFilter(filter, 0, 0, true);
+  CAN2.setRXFilter(filter, 0, 0, true);
+  }  
+  //standard
+  for (int filter = 3; filter < 7; filter++) {
+  CAN.setRXFilter(filter, 0x622, 0x1FFFFFF0, false);
+  CAN2.setRXFilter(filter, 0x622, 0x1FFFFFF0, false);
+  }  
+
+  // frame for PID request requesting PID(F5)
+  // frame1.id = 0x07E0;
+  // frame1.extended = 0;
+  // frame1.length = 8;
+  // frame1.data.bytes[0] = 0x02;
+  // frame1.data.bytes[1] = 0x21;
+  // frame1.data.bytes[2] = 0xF5;
+  // frame1.data.bytes[3] = 0x00;
+  // frame1.data.bytes[4] = 0x00;
+  // frame1.data.bytes[5] = 0x00;
+  // frame1.data.bytes[6] = 0x00;
+  // frame1.data.bytes[7] = 0x00;
+
+  // CAN.sendFrame(frame1);
+  // CAN2.sendFrame(frame1);
+  // Serial.println("Frame Sent!");
+  // printFrame(frame1);
 }
 
 void printFrame(CAN_FRAME &frame) {
-	Serial.print("ID: 0x");
-	Serial.print(frame.id, HEX);
-	Serial.print(" Len: ");
-	Serial.print(frame.length);
-	Serial.print(" Data: 0x");
-	for (int count = 0; count < frame.length; count++) {
-		Serial.print(frame.data.bytes[count], HEX);
-		Serial.print(" ");
-	}
-	Serial.print("\r\n");
+   Serial.print("ID: 0x");
+   Serial.print(frame.id, HEX);
+   Serial.print(" Len: ");
+   Serial.print(frame.length);
+   Serial.print(" Data: 0x");
+   for (int count = 0; count < frame.length; count++) {
+       Serial.print(frame.data.bytes[count], HEX);
+       Serial.print(" ");
+   }
+   Serial.print("\r\n");
 }
 
-// // http://lithiumate.elithion.com/php/controller_can_specs.php#PID_messages
-// void parseIndividualFrame(CAN_FRAME &frame) {
-// 	switch (frame.id) {
-// 	    case BATTVOLT:
-// 	      	break;
-// 	    case AVGTEMP:
-// 	     	break;
-// 	    case MAXTEMP:
-// 	     	break;
-// 	    case SOC:
-// 	     	break;
-// 	    case CCL:
-// 	     	break;
-// 	    case DCL:
-// 	     	break;
-// 	    default:
-// 	    	break;
-// 	}	
-// }
-
-//http://lithiumate.elithion.com/php/controller_can_specs.php#Standard
-void parseStandardFrame(CAN_FRAME &frame) {
-	switch (frame.id) {
-	    case STD_VOLT:{
-	    	Serial.print("Pack Voltage = ");
-	    	Serial.print(frame.data.bytes[1],HEX);
-	    	Serial.print(" ");
-	    	Serial.println(frame.data.bytes[0],HEX);
-
-	    	Serial.print("Minimum Voltage = ");
-	    	Serial.print(frame.data.bytes[2],HEX);
-
-	    	Serial.print("Maximum Voltage = ");
-	    	Serial.print(frame.data.bytes[4],HEX);
-	    	break;
-	    }
-	    case STD_CURRENT:{
-	    	Serial.print("Current = ");
-	    	Serial.print(frame.data.bytes[1],HEX);
-	    	Serial.print(" ");
-	    	Serial.println(frame.data.bytes[0],HEX);
-
-	    	Serial.print("CCL = ");
-	    	Serial.print(frame.data.bytes[2],HEX);
-	    	Serial.print(" ");
-	    	Serial.println(frame.data.bytes[3],HEX);
-
-	    	Serial.print("DCL = ");
-	    	Serial.print(frame.data.bytes[4],HEX);
-	    	Serial.print(" ");
-	    	Serial.println(frame.data.bytes[5],HEX);
-	    	break;
-	    }
-	    case STD_TEMP:{
-	    	Serial.print("Temperature = ");
-	    	Serial.println(frame.data.bytes[0],HEX);
-
-	    	Serial.print("Minimum Temperature = ");
-	    	Serial.print(frame.data.bytes[2],HEX);
-
-	    	Serial.print("Maximum Temperature = ");
-	    	Serial.print(frame.data.bytes[4],HEX);
-	    	break;
-	    }
-	    default:
-	      // do something
-	      break;
-	}
+//parses the standard frame sent by BMS every 1 second
+void parseFrame(CAN_FRAME &frame){
+  switch (frame.id) {
+      //state
+      case 0x622:
+        Serial.print("State = ");
+        Serial.print(frame.data.bytes[0],HEX);
+        Serial.print("\n");
+        break;
+      //pack voltage
+      case 0x623:
+        Serial.print("Pack Voltage = ");
+        Serial.print(frame.data.bytes[0],HEX);
+        Serial.print(frame.data.bytes[1],HEX);
+        Serial.print("V");
+        Serial.print("\n");
+        break;
+      //current
+      case 0x624:
+        Serial.print("Current = ");
+        Serial.print(frame.data.bytes[0],HEX);
+        Serial.print(frame.data.bytes[1],HEX);
+        Serial.print("A");
+        Serial.print("\n");
+        break;
+      //SOC
+      case 0x626:
+        Serial.print("SOC = ");
+        Serial.print(frame.data.bytes[0]);
+        Serial.print("%");
+        Serial.print("\n");
+        break;
+      //temperature
+      case 0x627:
+        Serial.print("Temperature = ");
+        Serial.print(frame.data.bytes[0],HEX);
+        Serial.print("C");
+        Serial.print("\n");
+        break;
+      default:
+        // do something
+        break;
+  }
 }
 
-// http://lithiumate.elithion.com/php/menu_setup.php#Custom_output_message
-// depending on how the frame is customised
-void parseCustomFrame(CAN_FRAME &frame) {
-	switch (frame.id) {
-		//Custom Frame 1 : information that changes more frequent
-	    case CUSTOM_1:{
-		    // data 0&1 = battery voltage (little endian) [022]
-	    	Serial.print("Battery Voltage = ");
-	    	Serial.print(frame.data.bytes[1],HEX);
-	    	Serial.print(" ");
-	    	Serial.println(frame.data.bytes[0],HEX);
-		    // data 2&3 = battery current (little endian) [054]
-		    Serial.print("Current = ");
-	    	Serial.print(frame.data.bytes[3],HEX);
-	    	Serial.print(" ");
-	    	Serial.println(frame.data.bytes[2],HEX);
-		    // data 4 = state of charge [112]
-	    	Serial.print("SOC = ");
-	    	Serial.println(frame.data.bytes[0],HEX);
-		    break;	
-	    }
-	    case CUSTOM_2:{
-		    // data 0 = average temp [096]
-	    	Serial.print("Ave Temperature = ");
-	    	Serial.println(frame.data.bytes[0],HEX);
-		    // data 1 = max temp [104]
-	    	Serial.print("Max Temperature = ");
-	    	Serial.println(frame.data.bytes[1],HEX);
-	    		//might not need 2 bytes for ccl and dcl 
-		    // data 2&3 = dcl (little endian) [086] 
-		    // data 4&5 = ccl (little endian) [078]
-		      break;
-	    }
-	    default:
-	      break;
-	}
-}
 
 void loop()
 {
-	CAN_FRAME incoming;
-	if (CAN.rx_avail()) {
-		CAN.get_rx_buff(incoming); 
-		printFrame(incoming);
-	}
+    CAN_FRAME incoming;
+
+    if (CAN.rx_avail()) {
+      CAN.get_rx_buff(incoming);
+      // Serial.print("CAN1 = "); 
+      // printFrame(incoming);
+      parseFrame(incoming);
+    }
 }
